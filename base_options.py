@@ -17,14 +17,23 @@ import utils
 
 class State(object):
     class UniqueNamespace(argparse.Namespace):
+        '''
+        这是一个嵌套类，继承自 argparse.Namespace，用于确保每个参数只能被设置一次。
+        '''
         def __init__(self, requires_unique=True):
             self.__requires_unique = requires_unique
             self.__set_value = {}
 
         def requires_unique(self):
+            '''
+            返回 __requires_unique 的值。
+            '''
             return self.__requires_unique
 
         def mark_set(self, name, value):
+            '''
+            用于标记一个参数已经设置。
+            '''
             if self.__requires_unique and name in self.__set_value:
                 raise argparse.ArgumentTypeError(
                     "'{}' appears several times: {}, {}.".format(
@@ -34,19 +43,59 @@ class State(object):
     __inited = False
 
     def __init__(self, opt=None):
+        '''
+        初始化 State 对象。
+        '''
+
+        '''
+        opt 可以是 None 或 argparse.Namespace 实例，默认情况下是 None。如果提供了 opt，将其转换为字典并重新包装为 Namespace
+        '''
         if opt is None:
+            '''
+            如果 opt 为 None，则创建一个 UniqueNamespace 对象。
+            '''
             self.opt = State.UniqueNamespace()
         else:
+            '''
+            assert isinstance(opt, argparse.Namespace) or isinstance(opt, dict)
+            检查 opt 是否为 argparse.Namespace 实例或字典
+            '''
             if isinstance(opt, argparse.Namespace):
+                '''
+                如果 opt 是 argparse.Namespace 实例，将其转换为字典
+                vars(opt) 返回一个包含 opt 属性和值的字典
+                '''
                 opt = vars(opt)
+            '''
+            **opt 是一个字典解包操作，它将字典中的键值对作为关键字参数传递
+            这将创建一个新的 argparse.Namespace 对象，其中包含 opt 中的所有键值对
+            '''
             self.opt = argparse.Namespace(**opt)
+
+        '''
+        self.extras 是一个空字典，用于存储额外的属性和值
+        '''
         self.extras = {}
+
+        '''
+        self.__inited 是一个布尔值，用于跟踪对象是否已初始化
+        '''
         self.__inited = True
+
+        '''
+        self._output_flag 是一个布尔值，用于控制输出标志，初始值为 True
+        '''
         self._output_flag = True
+
 
     def __setattr__(self, k, v):
         if not self.__inited:
+            '''
+            如果说没有初始化过参数，那就要调用父类里面的__setattr__方法
+            原先的类继承自Object类，Python里面隐含的一个父类。
+            '''
             return super(State, self).__setattr__(k, v)
+        # super().__setattr__(name, value) 来确保对象的属性最终能被正确设置，同时避免了无限递归的问题
         else:
             self.extras[k] = v
 
@@ -55,46 +104,71 @@ class State(object):
             return self.extras[k]
         elif k in self.opt:
             return getattr(self.opt, k)
+        '''
+        如果都没有找到这个参数，那么就要通过AttributeError进行报错。
+        '''
         raise AttributeError(k)
 
-    def copy(self):
+    def copy(self):   
         return argparse.Namespace(**self.merge())
 
     def get_output_flag(self):
         return self._output_flag
-
-    @contextmanager
+# 这里是生成器使用上下文管理器，用contextlib里面的contextmanager
+    @contextmanager#上下文管理器
     def pretend(self, **kwargs):
+        '''
+        pretend 方法的作用是临时设置对象的属性，在 with 块执行期间覆盖这些属性值，
+        并在 with 块结束后恢复原来的属性值。这对于需要临时更改对象状态而不想永久修改原始状态的情况非常有用。
+        '''
         saved = {}
         for key, val in kwargs.items():
             if key in self.extras:
                 saved[key] = self.extras[key]
+                # 把要保存的参数都存到一个新建的saved字典里面去
             setattr(self, key, val)
+            # 然后调用setattr方法
         yield
+        # 下面要恢复原样了
         for key, val in kwargs.items():
             self.pop(key)
             if key in saved:
                 self.extras[key] = saved[key]
 
+#关于知识点：装饰器
+# https://blog.csdn.net/weixin_44992737/article/details/125868592?ops_request_misc=%257B%2522request%255Fid%2522%253A%2522171984460016800197072286%2522%252C%2522scm%2522%253A%252220140713.130102334..%2522%257D&request_id=171984460016800197072286&biz_id=0&utm_medium=distribute.pc_search_result.none-task-blog-2~all~top_positive~default-1-125868592-null-null.142^v100^pc_search_result_base3&utm_term=%E8%A3%85%E9%A5%B0%E5%99%A8&spm=1018.2226.3001.4187
+# 语法糖
     def set_output_flag(self, val):
+        # 设置output_flag
         self._output_flag = val
 
     def pop(self, k, default=None):
         return self.extras.pop(k, default)
 
     def clear(self):
+        '''
+        清除extras里面的参数
+        '''
         self.extras.clear()
 
     # returns a single dict containing both opt and extras
     def merge(self, public_only=False):
+        '''
+        merge方法将两个字典（self.opt和self.extras）的内容合并到一个新的字典vs中。
+        如果public_only参数为True，它将过滤出vs中以下划线开头的任何键，有效地排除私
+        有或内部属性或方法。然后由方法返回合并的字典vs。
+        '''
         vs = vars(self.opt).copy()
         vs.update(self.extras)
         if public_only:
             for k in tuple(vs.keys()):
+                #  这行代码创建了一个包含vs字典中所有键的元组。使用tuple(vs.keys())而不是直接使用
+                # vs.keys()的原因是为了避免“在迭代过程中字典改变了大小”的错误，这种错误可能会在循环迭代期间修改字典时发生。
                 if k.startswith('_'):
+                    # 删除前导线那些私有变量,只返回公有变量
                     vs.pop(k)
         return vs
-
+###########################    FINISHED IN 2024/07/01 NIGHT     #################################
     def get_base_directory(self):
         vs = self.merge()
         opt = argparse.Namespace(**vs)
