@@ -86,7 +86,11 @@ class State(object):
         self._output_flag 是一个布尔值，用于控制输出标志，初始值为 True
         '''
         self._output_flag = True
-
+    '''
+    为什么需要额外的extras属性而不是直接在opt里面输入全部属性？
+    这是因为opt属性的主要目的是存储初始化时传递的参数，而extras属性提供了一种动态添加和存储额外属性的方式。
+    在某些情况下，可能需要在对象创建后的某个时间点添加或修改属性，这时就可以使用extras属性
+    '''
 
     def __setattr__(self, k, v):
         if not self.__inited:
@@ -170,6 +174,9 @@ class State(object):
         return vs
 ###########################    FINISHED IN 2024/07/01 NIGHT     #################################
     def get_base_directory(self):
+        '''
+        generating a structured directory path based on various configuration options
+        '''
         vs = self.merge()
         opt = argparse.Namespace(**vs)
         if opt.expr_name_format is not None:
@@ -194,18 +201,28 @@ class State(object):
         return os.path.join(opt.results_dir, *dirs)
 
     def get_load_directory(self):
+        # 调用上面的方法，进行生成路径
         return self.get_base_directory()
 
     def get_save_directory(self):
+        '''
+        获取保存路径，获取base_directory之后如果是test，那就要追加测试子目录
+        '''
         base_dir = self.get_base_directory()
         if self.phase != 'train':
+            # 检查 phase 是否不是 'train'
             base_dir = os.path.join(base_dir, 'test')
+            # 如果 phase 不是 'train'，将 'test' 追加到基础目录
             subdir = self.get_test_subdirectory()
             if subdir is not None and subdir != '':
+                # 如果测试子目录不为空，将其追加到基础目录
                 base_dir = os.path.join(base_dir, subdir)
         return base_dir
 
     def get_test_subdirectory(self):
+        '''
+        获取测试子目录
+        '''
         if self.test_name_format is not None:
             assert len(self.test_name_format) > 0
             vs = self.merge()
@@ -217,6 +234,9 @@ class State(object):
                 '' if len(self.test_distilled_lrs) == 1 else '({})'.format('_'.join(self.test_distilled_lrs[1:])))
 
     def get_model_dir(self):
+        '''
+        获取模型的目录
+        '''
         vs = vars(self.opt).copy()
         vs.update(self.extras)
         opt = argparse.Namespace(**vs)
@@ -238,9 +258,17 @@ class BaseOptions(object):
         # argparse utils
 
         def comp(type, op, ref):
+            '''
+            op(ivalue, ref)这行代码是在调用一个由op变量引用的函数或者方法，这个函数或者方法接收两个参数ivalue和ref。
+            在这段代码中，op是通过getattr(type, '__{}__'.format(op))获取到的一个特殊方法，这个方法是type类型的一个比较方法，
+            例如__gt__（大于），__lt__（小于），__eq__（等于）等等。
+            '''
             op = getattr(type, '__{}__'.format(op))
-
+            
             def check(value):
+                '''
+                调用对应的op操作方法去进行操作数比较
+                '''
                 ivalue = type(value)
                 if not op(ivalue, ref):
                     raise argparse.ArgumentTypeError("expected value {} {}, but got {}".format(op, ref, value))
